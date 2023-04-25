@@ -1,10 +1,4 @@
 
-``` r
-getwd()
-```
-
-    ## [1] "/Users/frederikaust/Documents/projects/jab"
-
 <!-- README.md is generated from README.Rmd. Please edit that file -->
 
 # jab: Automagic computation of Jeffrey’s approxiamte Bayes factors

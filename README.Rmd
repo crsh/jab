@@ -4,10 +4,6 @@ references: "inst/references.bib"
 citeproc: yes
 ---
 
-```{r}
-getwd()
-```
-
 <!-- README.md is generated from README.Rmd. Please edit that file -->
 
 ```{r, include = FALSE}
