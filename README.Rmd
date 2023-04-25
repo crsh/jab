@@ -1,0 +1,145 @@
+---
+output: github_document
+references: "inst/references.bib"
+citeproc: yes
+---
+
+```{r}
+getwd()
+```
+
+<!-- README.md is generated from README.Rmd. Please edit that file -->
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.path = "man/figures/README-",
+  out.width = "100%"
+)
+```
+
+# jab: Automagic computation of Jeffrey's approxiamte Bayes factors
+
+<!-- badges: start -->
+[![CRAN status](https://www.r-pkg.org/badges/version/jab)](https://CRAN.R-project.org/package=jab)
+[![Lifecycle: experimental](https://img.shields.io/badge/lifecycle-experimental-orange.svg)](https://lifecycle.r-lib.org/articles/stages.html#experimental)
+<!-- badges: end -->
+
+The goal of **jab** is to conveniently calculate Jeffrey's approximate Bayes factor [JAB; @Wagenmakers2022] for a wide variety of statistical analyses.
+
+## Installation
+
+You can install the development version of **jab** like so:
+
+``` r
+remotes::install_github("crsh/jab")
+```
+
+## Example
+
+**jab** automatically supports calculation of JAB for any analysis that outputs a [Wald test](https://en.wikipedia.org/wiki/Wald_test) and for which [**broom**](https://github.com/tidymodels/broom/) returns estimate and standard error.
+The user additionally needs to specify a prior distribution for the effect size estimate in the scale used to calculate the Wald statistic.
+
+Take the example of standard linear regression.
+JAB can be easily calculated for all regression coefficients.
+We simply submit the results from the orthodox frequentist analysis to `jab()` and specify a prior distribution---let's use a scaled central Cauchy distribution.
+Note that JAB gives evidence for the null hypothesis relative to the alternative.
+
+```{r lm-example}
+library("jab")
+
+data(attitude)
+attitude_lm <- lm(rating ~ ., data = attitude)
+attitude_p <- broom::tidy(attitude_lm)
+
+attitude_p
+
+attitude_jab <- jab(
+  attitude_lm
+  , prior = dcauchy
+  , location = 0
+  , scale = sqrt(2) / 4
+)
+
+attitude_jab
+```
+
+Let's compare this with the Jeffreys-Zellner-Siow (JZS) Bayes factor from `BayesFactor::regressionBF()` with the same prior distribution.
+
+```{r lm-example-jzs}
+attitude_jzs <- BayesFactor::regressionBF(
+  rating ~ .
+  , data = attitude
+  , rscaleCont = sqrt(2) / 4
+  , whichModels = "top"
+  , progress = FALSE
+)
+
+tibble::tibble(
+  # Frequentist p-values
+  p = attitude_p$p.value
+  
+  # Bayes factors in favor of the null hypothesis
+  , jab = attitude_jab
+  , jzs = c(NA, rev(as.vector(attitude_jzs)))
+  
+  # Naive posterior probabilities
+  , jab_pp = jab / (jab + 1)
+  , jzs_pp = jzs / (jzs + 1)
+)
+```
+
+Pretty close!
+
+### Varying prior distributions
+
+To vary the scale of the prior distribution, simply pass a vector of scaling parameters, one scale for each coefficient.
+
+```{r lm-example-vary-priors}
+jab(
+  attitude_lm
+  , prior = dcauchy
+  , location = 0
+  , scale = c(rep(0.5, 3), rep(sqrt(2) / 4, 4))
+)
+```
+
+### Prior sensitivity
+
+Similarly, performing a prior sensitivity analysis is straight forward and fast.
+
+```{r lm-example-prior-sensitivity}
+r <- seq(0.2, 1.5, length.out = 50)
+
+jab_sensitivity <- tibble::tibble(
+  r = rep(r, each = length(coef(attitude_lm)))
+  , coef = rep(names(coef(attitude_lm)), 50)
+  , jab = jab(
+    attitude_lm
+    , prior = dcauchy
+    , location = 0
+    , scale = r
+  )
+)
+
+library("ggplot2")
+
+ggplot(jab_sensitivity) +
+  aes(x = r, y = jab / (1 + jab), color = coef) +
+  geom_hline(yintercept = 0.5, linetype = "22", color = grey(0.7)) +
+  geom_line(linewidth = 2) +
+  scale_color_viridis_d(option = "E") +
+  labs(
+    x = bquote(italic(r))
+    , y = "Naive posterior probability"
+    , color = "Coefficient"
+  ) +
+  papaja::theme_apa()
+```
+
+## Package dependencies
+
+```{r dep-plot, echo = FALSE, fig.width = 7, fig.height = 7, message = FALSE, warning = FALSE}
+depgraph::plot_dependency_graph()
+```

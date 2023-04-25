@@ -1,0 +1,9 @@
+{
+  "grammarly.selectors": [
+    {
+      "language": "quarto",
+      "scheme": "file",
+      "pattern": "/Users/frederikaust/Downloads/overclaiming/jab-examples.qmd"
+    }
+  ]
+}
