@@ -43,11 +43,12 @@ jab.default <- function(x, prior, ..., ratio = getOption("jab.ratio")) {
   jab01 <- .jab01(
     g = prior(x_tidy$estimate, ...)
     , se = x_tidy$std.error
-    , x_tidy$statistic
+    ,  w = x_tidy$statistic
   )
 
-  jab <- .ratio(jab01, ratio)
-  .ratio(jab, ratio)
+  names(jab01) <- x_tidy$term
+
+  .ratio(jab01, ratio)
 }
 
 
@@ -61,11 +62,19 @@ jab.lm <- function(x, prior, ..., ratio = getOption("jab.ratio")) {
   x_tidy <- summary(x) |>
     broom::tidy()
 
+  # jab01 <- .jab01.p(
+  #   g = prior(x_tidy$estimate, ...)
+  #   , se = x_tidy$std.error
+  #   , p = x_tidy$p.value
+  # )
+
   jab01 <- .jab01.z(
     g = prior(x_tidy$estimate, ...)
     , se = x_tidy$std.error
     , z = x_tidy$statistic
   )
+
+  names(jab01) <- x_tidy$term
 
   .ratio(jab01, ratio)
 }
@@ -86,6 +95,8 @@ jab.glht <- function(x, prior, ..., ratio = getOption("jab.ratio")) {
     , se = x_tidy$std.error
     , z = x_tidy$statistic
   )
+
+  names(jab01) <- x_tidy$contrastff
 
   .ratio(jab01, ratio)
 }
@@ -129,6 +140,48 @@ jab.cocor.dep.groups.overlap <- function(
   .ratio(jab01, ratio)
 }
 
+
+#' @rdname jab
+#' @method jab merMod
+#' @export
+
+jab.merMod <- function(x, prior, ..., ratio = getOption("jab.ratio")) {
+  require_broom_mixed()
+
+  x_tidy <- broom.mixed::tidy(x) |>
+    subset(effect == "fixed")
+
+  jab01 <- .jab01.z(
+    g = prior(x_tidy$estimate, ...)
+    , se = x_tidy$std.error
+    , z = x_tidy$statistic
+  )
+
+  names(jab01) <- x_tidy$term
+
+  .ratio(jab01, ratio)
+}
+
+
+#' @rdname jab
+#' @method jab emmGrid
+#' @export
+
+jab.emmGrid <- function(x, prior, ..., ratio = getOption("jab.ratio")) {
+  assertthat::assert_that(is.function(prior))
+
+  x_tidy <- broom::tidy(x)
+
+  jab01 <- .jab01.z(
+    g = prior(x_tidy$estimate, ...)
+    , se = x_tidy$std.error
+    , z = x_tidy$statistic
+  )
+
+  .ratio(jab01, ratio)
+}
+
+
 #' Jeffrey's approximate Bayes factor
 #'
 #' Piecewise approximation of Jeffrey's approximate Bayes factors for
@@ -161,20 +214,13 @@ jab.cocor.dep.groups.overlap <- function(
 #' jab_p(lm.D9, prior = dcauchy, location = 0, scale = sqrt(2)/4)
 
 jab_p <- function(x, n, ratio = "01") {
-  # assertthat::assert_that(is.function(prior))
   assertthat::is.number(x)
   assertthat::is.number(n)
 
   # Piecewise approximation assuming A = 1
-  if (x > 0 && x <= 0.1) {
-    p <- 3 * x
-  } else if (x > 0.1 && x <= 0.5) {
-    p <- 4/3 * x^(2/3)
-  } else if (x > 0.5 && x < 1) {
-    p <- x^(1/4)
-  } else {
-    stop("p value out of bounds (0, 1).")
-  }
+  p <- (x > 0 & x <= 0.1) * 3 * x +
+    (x > 0.1 & x <= 0.5) * 4/3 * x^(2/3) +
+    (x > 0.5 & x < 1) * x^(1/4)
 
   .ratio(p * sqrt(n), ratio)
 }

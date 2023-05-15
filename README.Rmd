@@ -1,7 +1,6 @@
 ---
 output: github_document
 references: "inst/references.bib"
-citeproc: yes
 ---
 
 <!-- README.md is generated from README.Rmd. Please edit that file -->
@@ -22,7 +21,8 @@ knitr::opts_chunk$set(
 [![Lifecycle: experimental](https://img.shields.io/badge/lifecycle-experimental-orange.svg)](https://lifecycle.r-lib.org/articles/stages.html#experimental)
 <!-- badges: end -->
 
-The goal of **jab** is to conveniently calculate Jeffrey's approximate Bayes factor [JAB; @Wagenmakers2022] for a wide variety of statistical analyses.
+The goal of **jab** is to conveniently calculate Jeffrey's approximate Bayes factor (JAB; [Wagenmakers, 2022](https://psyarxiv.com/egydq)) for a wide variety of statistical analyses.
+
 
 ## Installation
 
@@ -34,8 +34,8 @@ remotes::install_github("crsh/jab")
 
 ## Example
 
-**jab** automatically supports calculation of JAB for any analysis that outputs a [Wald test](https://en.wikipedia.org/wiki/Wald_test) and for which [**broom**](https://github.com/tidymodels/broom/) returns estimate and standard error.
-The user additionally needs to specify a prior distribution for the effect size estimate in the scale used to calculate the Wald statistic.
+**jab** automatically supports calculation of JAB for any analysis that outputs a [Wald test](https://en.wikipedia.org/wiki/Wald_test) and for which [**broom**](https://github.com/tidymodels/broom/) returns an estimate and a standard error.
+The user additionally needs to specify a prior distribution for estimate in the scale used to calculate the Wald statistic.
 
 Take the example of standard linear regression.
 JAB can be easily calculated for all regression coefficients.
@@ -44,13 +44,17 @@ Note that JAB gives evidence for the null hypothesis relative to the alternative
 
 ```{r lm-example}
 library("jab")
+library("ggplot2")
 
+# Fit regression model
 data(attitude)
-attitude_lm <- lm(rating ~ ., data = attitude)
-attitude_p <- broom::tidy(attitude_lm)
+attitude_z <- data.frame(scale(attitude))
+attitude_lm <- lm(rating ~ 0 + ., data = attitude_z)
+attitude_tidy_lm <- broom::tidy(attitude_lm)
 
-attitude_p
+attitude_tidy_lm
 
+# Specify prior distribution and approximate Bayes factor
 attitude_jab <- jab(
   attitude_lm
   , prior = dcauchy
@@ -61,9 +65,10 @@ attitude_jab <- jab(
 attitude_jab
 ```
 
-Let's compare this with the Jeffreys-Zellner-Siow (JZS) Bayes factor from `BayesFactor::regressionBF()` with the same prior distribution.
+Now compare this with the Jeffreys-Zellner-Siow (JZS) Bayes factor from `BayesFactor::regressionBF()` with the same prior distribution.
 
 ```{r lm-example-jzs}
+# Calculate JZS-Bayes factor
 attitude_jzs <- BayesFactor::regressionBF(
   rating ~ .
   , data = attitude
@@ -72,13 +77,16 @@ attitude_jzs <- BayesFactor::regressionBF(
   , progress = FALSE
 )
 
+# Compare results
 tibble::tibble(
+  predictor = attitude_tidy_lm$term
+  
   # Frequentist p-values
-  p = attitude_p$p.value
+  , p = attitude_tidy_lm$p.value
   
   # Bayes factors in favor of the null hypothesis
   , jab = attitude_jab
-  , jzs = c(NA, rev(as.vector(attitude_jzs)))
+  , jzs = rev(as.vector(attitude_jzs))
   
   # Naive posterior probabilities
   , jab_pp = jab / (jab + 1)
@@ -97,7 +105,7 @@ jab(
   attitude_lm
   , prior = dcauchy
   , location = 0
-  , scale = c(rep(0.5, 3), rep(sqrt(2) / 4, 4))
+  , scale = c(rep(0.5, 3), rep(sqrt(2) / 4, 3))
 )
 ```
 
@@ -106,33 +114,78 @@ jab(
 Similarly, performing a prior sensitivity analysis is straight forward and fast.
 
 ```{r lm-example-prior-sensitivity}
-r <- seq(0.2, 1.5, length.out = 50)
-
-jab_sensitivity <- tibble::tibble(
-  r = rep(r, each = length(coef(attitude_lm)))
-  , coef = rep(names(coef(attitude_lm)), 50)
-  , jab = jab(
-    attitude_lm
-    , prior = dcauchy
-    , location = 0
-    , scale = r
+# Specify design
+jab_sensitivity <- expand.grid(
+  coef = names(coef(attitude_lm))
+  , r = seq(0.2, 1.5, length.out = 50)
+) |>
+  # Calculate Bayes factors for each prior setting
+  dplyr::group_by(r) |>
+  dplyr::mutate(
+    jab = jab(
+      attitude_lm
+      , prior = dcauchy
+      , location = 0
+      , scale = r
+    )
   )
-)
 
-library("ggplot2")
-
+# Plot results
 ggplot(jab_sensitivity) +
   aes(x = r, y = jab / (1 + jab), color = coef) +
-  geom_hline(yintercept = 0.5, linetype = "22", color = grey(0.7)) +
-  geom_line(linewidth = 2) +
-  scale_color_viridis_d(option = "E") +
+  geom_hline(
+    yintercept = 0.5
+    , linetype = "22"
+    , color = grey(0.7)
+  ) +
+  geom_line(linewidth = 1.5) +
+  scale_color_viridis_d() +
+  lims(y = c(0, 1)) +
   labs(
     x = bquote(italic(r))
     , y = "Naive posterior probability"
     , color = "Coefficient"
   ) +
-  papaja::theme_apa()
+  papaja::theme_apa(box = TRUE)
 ```
+
+
+### Sequential analyses
+
+Sequential analyses are also a breeze.
+
+```{r lm-example-sequential-analysis}
+# Specify design
+sequential_jab <- expand.grid(
+  coef = names(coef(attitude_lm))
+  , n = 10:nrow(attitude_z)
+) |>
+  # Calculate Bayes factors for each subsample
+  dplyr::group_by(n) |>
+  dplyr::mutate(
+    jab = jab(
+      update(attitude_lm, data = attitude_z[1:unique(n), ])
+      , dcauchy
+      , location = 0
+      , scale = sqrt(2) / 4
+    )
+    , jab_pp = jab / (jab + 1)
+  )
+
+# Plot results
+ggplot(sequential_jab) +
+  aes(x = n, y = jab_pp, color = coef) +
+  geom_line(linewidth = 1.5) +
+  scale_color_viridis_d() +
+  lims(y = c(0, 1)) +
+  labs(
+    x = bquote(italic(n))
+    , y = "Naive posterior probability"
+    , color = "Coefficient"
+  ) +
+  papaja::theme_apa(box = TRUE)
+```
+
 
 ## Package dependencies
 
