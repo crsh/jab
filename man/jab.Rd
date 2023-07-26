@@ -3,6 +3,7 @@
 \name{jab}
 \alias{jab}
 \alias{jab.default}
+\alias{jab.htest}
 \alias{jab.lm}
 \alias{jab.glht}
 \alias{jab.cocor.dep.groups.overlap}
@@ -13,6 +14,8 @@
 jab(x, ...)
 
 \method{jab}{default}(x, prior, ..., ratio = getOption("jab.ratio"))
+
+\method{jab}{htest}(x, prior, ..., ratio = getOption("jab.ratio"))
 
 \method{jab}{lm}(x, prior, ..., ratio = getOption("jab.ratio"))
 
@@ -35,6 +38,9 @@ jab(x, ...)
 direction of the evidence ratio.}
 
 \item{test}{Character. Wald statistics to use for calculations.}
+}
+\value{
+A numeric (vector of) Jeffrey's approximate Bayes factors.
 }
 \description{
 Generic function to compute Jeffrey's approximate Bayes factors for

@@ -4,7 +4,7 @@
 \alias{jab_p}
 \title{Jeffrey's approximate Bayes factor}
 \usage{
-jab_p(x, n, ratio = "01")
+jab_p(x, n, ratio = getOption("jab.ratio"))
 }
 \arguments{
 \item{x}{Numeric. \emph{p}-value from frequentist Wald test.}
@@ -13,6 +13,9 @@ jab_p(x, n, ratio = "01")
 
 \item{ratio}{Character. Either \code{"01"} or \code{"10"} to define the
 direction of the evidence ratio.}
+}
+\value{
+A numeric (vector of) Jeffrey's approximate Bayes factors.
 }
 \description{
 Piecewise approximation of Jeffrey's approximate Bayes factors for
@@ -32,7 +35,7 @@ approximation method suggested by
    }
 }
 \examples{
-jab_p(lm.D9, prior = dcauchy, location = 0, scale = sqrt(2)/4)
+jab_p(x = 0.0495, n = 136)
 }
 \references{
 \insertAllCited{}
