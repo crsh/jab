@@ -1,3 +1,11 @@
+.jab01_w_a_n <- function(w, a, n) {
+  assertthat::assert_that(is.numeric(w))
+  assertthat::assert_that(is.numeric(a))
+  assertthat::assert_that(is.numeric(n))
+
+  exp(-0.5 * w) * sqrt(n) * a
+}
+
 .jab01_w <- function(w, g, se) {
   assertthat::assert_that(is.numeric(w))
   assertthat::assert_that(is.numeric(g))
@@ -9,7 +17,7 @@
 .jab01 <- function(p = NULL, z = NULL, w = NULL, ...) {
   if (!is.null(p)) {
     assertthat::assert_that(is.numeric(p))
-    w <- stats::qchisq(1 -  p, df = 1)
+    w <- stats::qchisq(1 - p, df = 1)
   } else if (!is.null(z)) {
     assertthat::assert_that(is.numeric(z))
     w <- z^2

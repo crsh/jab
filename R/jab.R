@@ -157,13 +157,13 @@ jab.merMod <- function(x, prior, ..., ratio = getOption("jab.ratio")) {
     jab01 <- .jab01(
       , p = x_tidy$p.value
       , g = prior(x_tidy$estimate, ...)
-      , se = x_tidy$std_error
+      , se = x_tidy$std.error
     )
   } else {
     jab01 <- .jab01(
       , z = x_tidy$statistic
       , g = prior(x_tidy$estimate, ...)
-      , se = x_tidy$std_error
+      , se = x_tidy$std.error
     )
   }
 
@@ -172,6 +172,13 @@ jab.merMod <- function(x, prior, ..., ratio = getOption("jab.ratio")) {
   .ratio(jab01, ratio)
 }
 
+#' @rdname jab
+#' @method jab glmerMod
+#' @export
+
+jab.glmerMod <- function(x, prior, ..., ratio = getOption("jab.ratio")) {
+  jab.merMod(x, prior, ..., ratio = ratio)
+}
 
 #' @rdname jab
 #' @method jab emmGrid
@@ -218,16 +225,30 @@ jab.emmGrid <- function(x, prior, ..., ratio = getOption("jab.ratio")) {
 #' @export
 #'
 #' @examples
-#' jab_p(x = 0.0495, n = 136)
+#' jab_3pn(x = 0.0495, n = 136)
 
-jab_p <- function(x, n, ratio = getOption("jab.ratio")) {
+jab_3pn <- function(x, n, ratio = getOption("jab.ratio")) {
   assertthat::assert_that(is.numeric(x))
   assertthat::assert_that(is.numeric(n))
 
   # Piecewise approximation assuming A = 1
-  p <- (x > 0 & x <= 0.1) * 3 * x +
-    (x > 0.1 & x <= 0.5) * 4/3 * x^(2/3) +
-    (x > 0.5 & x < 1) * x^(1/4)
+  p <- 
+    (x >= 0   & x <= 0.1) * 3   * x +
+    (x >  0.1 & x <= 0.5) * 4/3 * x^(2/3) +
+    (x >  0.5 & x <= 1.0)       * x^(1/4)
+
+  .ratio(p * sqrt(n), ratio)
+}
+
+jab_pnpi <- function(x, n, ratio = getOption("jab.ratio")) {
+  assertthat::assert_that(is.numeric(x))
+  assertthat::assert_that(is.numeric(n))
+
+  # Piecewise approximation assuming A = 1
+  p <-
+    (x >= 0   & x <= 0.1) * (pi - 1) * x^(9/10) +
+    (x >  0.1 & x <= 0.6) * 4/pi     * x^(2/3) +
+    (x >  0.6 & x <= 1.0)            * x^(1/5)
 
   .ratio(p * sqrt(n), ratio)
 }

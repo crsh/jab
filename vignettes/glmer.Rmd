@@ -1,0 +1,257 @@
+---
+title: "Jeffrey's Approximate Bayes Factor for Hierarchical Probit Models"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Jeffrey's Approximate Bayes Factor for Hierarchical Probit Models}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup}
+library("dplyr")
+library("broom.mixed")
+library("jab")
+library("lme4")
+library("brms")
+library("ggplot2")
+
+options(contrasts = c("contr.sum", "contr.poly"))
+```
+
+```{r simulate-data, cache = TRUE}
+sim_n <- 250
+id <- seq(sim_n)
+trial <- 1:14
+treatment <- c("control", "treat")
+df <- expand.grid(id = id, trial = trial, treatment = treatment)
+
+set.seed(1)
+moderator <- sample(c("a", "b"), size = sim_n, replace = TRUE)
+df$moderator <- moderator[df$id]
+df <- df[order(df$id, df$trial),]
+rownames(df) <- NULL
+
+df$int <- interaction(df$treatment, df$moderator)
+probs <- 0.5 + c(-1, -1, 1, 1) * 0.03 +
+               c(-1, 1, -1, 1) * 0.05 +
+               c(-1, 1, 1, -1) * 0
+names(probs) <- levels(df$int)
+df$p <- probs[df$int]
+
+ set.seed(3)
+# Random intercept
+r_int <- rnorm(n = sim_n, mean = 0, sd = 1)
+df$theta <- qnorm(df$p) + r_int[df$id]
+
+# Random slopes
+r_slope <- rnorm(n = sim_n, mean = 0, sd = 0.6)
+df$theta <- df$theta + r_slope[df$id] * (df$treatment == "treat")
+df$p <- pnorm(df$theta)
+df$y <- rbinom(n = nrow(df), size = 1, prob = df$p)
+```
+
+```{r frequentist-glmer, cache = TRUE}
+probit_glmer <- glmer(
+  y ~ treatment * moderator + (treatment | id)
+  , data = df
+  , family = binomial(link = "probit")
+)
+
+glmer_jab <- tidy(probit_glmer) |>
+  filter(effect == "fixed") |>
+  select(-effect, -group) |>
+  mutate(
+    jab = jab(probit_glmer, dnorm, mean = 0, sd = 1)
+  )
+
+glmer_jab
+```
+
+```{r bayesian-glmer, cache = TRUE}
+probit_bglmer <- brm(
+  y ~ treatment * moderator + (treatment | id)
+  , data = df
+  , family = bernoulli(link = "probit")
+  , prior = prior(normal(0, 1), class = "b")
+  , warmup = 1000
+  , iter = 6000
+  , chains = 3
+  , cores = 3
+)
+
+d1 <- as_draws_df(probit_bglmer) |>
+  dplyr::summarize_at(vars(matches("b_")), brms:::density_ratio)
+
+glmer_jab$sd <- c(NA, unlist(d1[-1]) / dnorm(0, 0, 1))
+
+select(glmer_jab, term, jab, sd)
+```
+
+```{r}
+knitr::kable(glmer_jab)
+```
+
+```{r sequential-analysis, cache = TRUE}
+# Specify design
+sequential_jab <- expand.grid(
+  coef = names(fixef(probit_glmer))
+  , n = seq(20, sim_n, 10)
+) |>
+  # Calculate Bayes factors for each subsample
+  dplyr::group_by(n) |>
+  dplyr::mutate(
+    jab = jab(
+      update(probit_glmer, data = filter(df, id %in% 1:unique(n)))
+      , dnorm
+      , mean = 0
+      , sd = 1
+    )
+    , jab_pp = 1 - jab / (jab + 1)
+  )
+```
+
+```{r sequential-analysis-brms, cache = TRUE}
+sequential_jab <- sequential_jab |>
+  dplyr::mutate(
+    sd = {
+      m <- update(probit_bglmer, newdata = filter(df, id %in% 1:unique(n)))
+
+      d1 <- as_draws_df(m) |>
+        dplyr::summarize_at(vars(matches("b_")), brms:::density_ratio)
+
+      c(NA, unlist(d1[-1]) / dnorm(0, 0, 1))
+    }
+    , sd_pp = 1 - sd / (sd + 1)
+  )
+```
+
+
+```{r sequential-analysis-plot}
+sequential_jab |>
+  filter(n > 20) |>
+  tidyr::pivot_longer(c("jab", "sd"), names_to = "approx", values_to = "bf") |>
+  mutate(approx = toupper(approx)) |>
+  ggplot() +
+    aes(x = n, y = bf, color = coef, linetype = approx, linewidth = approx) +
+    geom_line() +
+    scale_color_viridis_d() +
+    scale_linewidth_manual(values = c(1.5, 0.5)) +
+    scale_y_log10() +
+    labs(
+      x = bquote(italic(n))
+      , y = bquote(log(BF))
+      , color = "Coefficient"
+      , linetype = "Approximation"
+      , linewidth = "Approximation"
+    ) +
+    papaja::theme_apa(base_size = 16, box = TRUE)
+
+sequential_jab |>
+  filter(n > 20) |>
+  tidyr::pivot_longer(c("jab_pp", "sd_pp"), names_to = "approx", values_to = "pp") |>
+  mutate(approx = toupper(approx)) |>
+  ggplot() +
+    aes(x = n, y = pp, color = coef, linetype = approx, linewidth = approx) +
+    geom_line() +
+    scale_color_viridis_d() +
+    scale_linewidth_manual(values = c(1.5, 0.5)) +
+    scale_y_log10() +
+    lims(y = c(0, 1)) +
+    labs(
+      x = bquote(italic(n))
+      , y = "Naive posterior probability"
+      , color = "Coefficient"
+      , linetype = "Approximation"
+      , linewidth = "Approximation"
+    ) +
+    papaja::theme_apa(base_size = 16, box = TRUE)
+```
+
+
+```{r}
+sequential_jab |>
+  filter(n > 20) |>
+  ggplot() +
+    aes(x = jab_pp, y = sd_pp, group = coef, color = coef) +
+    geom_abline(intercept = 0, slope = 1) +
+    geom_point() +
+    coord_equal() +
+    papaja::theme_apa(base_size = 16, box = TRUE)
+```
+
+
+```{r}
+jab_sensitivity <- expand.grid(
+  coef = names(fixef(probit_glmer))
+  , sd = seq(0.2, 0.8, length.out = 50)
+) |>
+  # Calculate Bayes factors for each prior setting
+  dplyr::group_by(sd) |>
+  dplyr::mutate(
+    jab = jab(
+      probit_glmer
+      , prior = dnorm
+      , mean = 0
+      , sd = sd
+    )
+  )
+
+ggplot(jab_sensitivity) +
+  aes(x = sd, y = jab / (1 + jab), color = coef) +
+  geom_hline(
+    yintercept = 0.5
+    , linetype = "22"
+    , color = grey(0.7)
+  ) +
+  geom_line(linewidth = 1.5) +
+  scale_color_viridis_d() +
+  lims(y = c(0, 1)) +
+  labs(
+    x = bquote(italic(sigma[0]))
+    , y = "Naive posterior probability"
+    , color = "Coefficient"
+  ) +
+  papaja::theme_apa(base_size = 16, box = TRUE)
+```
+
+Maybe, we can salvage JAB even in cases where we don't have a ML solution and Wald test by approximating the sampling distribution by the uninformed posterior distribution?
+
+I fit the hierarchical GLM again with flat priors and use the posterior mean and standard deviation as stand-ins for the MLE and standard error.
+
+```{r}
+probit_bglmer <- brm(
+  y ~ treatment * moderator + (treatment | id)
+  , data = df
+  , family = bernoulli(link = "probit")
+  , prior(normal(0, 1000), class = "sd")
+  , warmup = 1000
+  , iter = 6000
+  , chains = 3
+  , cores = 3
+)
+
+summary(probit_bglmer)$fixed |> 
+  mutate(
+    statistic = Estimate / Est.Error
+    , jab = jab:::.jab01_w(
+      w = statistic^2
+      , g = dnorm(Estimate, mean = 0, sd = 1)
+      , se = Est.Error
+    )
+)
+```
+
+This seems to work remarkably well!
+
+I should try this with models where this is actually impossible to do and compare the results to bridge sampling.
+
+My hunch is that this should work pretty well as long as the posterior is approximately normally distributed.
+
+Another option would be to use the posterior p-value to derive the stand-in for the Wald statistic, but this would get unstable if the posterior is far away from the null value

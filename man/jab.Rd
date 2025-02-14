@@ -8,6 +8,7 @@
 \alias{jab.glht}
 \alias{jab.cocor.dep.groups.overlap}
 \alias{jab.merMod}
+\alias{jab.glmerMod}
 \alias{jab.emmGrid}
 \title{Jeffrey's approximate Bayes factor}
 \usage{
@@ -24,6 +25,8 @@ jab(x, ...)
 \method{jab}{cocor.dep.groups.overlap}(x, test, prior, ..., ratio = getOption("jab.ratio"))
 
 \method{jab}{merMod}(x, prior, ..., ratio = getOption("jab.ratio"))
+
+\method{jab}{glmerMod}(x, prior, ..., ratio = getOption("jab.ratio"))
 
 \method{jab}{emmGrid}(x, prior, ..., ratio = getOption("jab.ratio"))
 }

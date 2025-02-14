@@ -1,0 +1,643 @@
+---
+title: "Jeffrey's approximate Bayes Factor for linear regression coefficients"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Jeffrey's approximate Bayes Factor for linear regression coefficients}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r}
+#| include: false
+
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+The standard error for regression coefficients needed to derive the $\mathrm{JAB}_{01}$ is
+
+$$
+\mathrm{se}(\mathbf{\hat\beta}) = \hat\sigma (\mathbf{X}^T\mathbf{X})^{-1},
+$$
+
+and therefore the JAB scaling factor is
+
+$$
+\begin{align}
+S_\beta & = \frac{1}{\sqrt{2\pi}} \frac{1}{g(\hat\beta)} \frac{1}{\hat\sigma (\mathbf{X}^T\mathbf{X})^{-1}},
+\end{align}
+$$
+
+
+where $g(\hat\beta)$ is the prior density evaluated at the maximum likelihood estimate.
+The factor $A = \frac{1}{\hat\sigma (\mathbf{X}^T\mathbf{X})^{-1}}$ seems to be related to the JZS $g$-prior <!--(p. 889, Rouder & Morey, 2012)-->,
+
+$$
+\begin{align}
+%\beta \sim \mathcal{N}(0, g\sigma^2(\mathbf{X}^T\mathbf{X} / n)^{-1}) \\
+\beta \sim \mathcal{N}(0, g\sigma^2(\mathbf{X}^T\mathbf{X})^{-1}),
+\end{align}
+$$
+
+where the normal distribution is parameterized by mean $\mu$ and variance $\sigma^2$.
+So in this prior $g$ is scaled by the squared standard error of the covariates.
+
+Therefore, if a JZS prior is used, the JAB expression simplifies to
+
+$$
+\begin{align}
+S_\beta & = \frac{1}{\sqrt{2\pi}} \frac{1}{h(\hat\beta)} \sqrt{n} \\
+h(\hat\beta) & = \mathcal{N}(0, g)
+\end{align}
+$$
+
+TODO: VERIFY THAT THIS IS CORRECT, IF SO THE EXPRESSION WILL SIMPLIFY FURTHER, I THINK!
+
+```{r}
+#| eval: false
+sqrt(sigma(attitude_lm)^2 * diag(solve(t(X) %*% X)))
+broom::tidy(attitude_lm)$std.error
+```
+
+so maybe there's a way to simplify this expression further?
+
+To better intuit about the effects of various data components on the JAB, the scaling factor $S_\beta$ can be expressed as variance inflation factor,
+
+$$
+\mathrm{se}(\hat\beta_i) = \sqrt{\frac{\sigma^2}{(n-1) \hat\sigma^2_{X_i}}} \sqrt{\mathrm{VIF}}
+$$
+
+where $\sqrt{\mathrm{VIF}} = \frac{1}{1-R^2_{X_iX_{\neg i}}}$ is the variance inflation factor, which indicates the factor by which the standard error is increased relative to uncorrelated predictors.
+
+Assuming that all variables are $z$-standardized, the JAB scaling factor $A$ simplifies to
+
+$$
+\mathrm{se}(\hat\beta_i) = \frac{\sigma}{\sqrt{n-1}} \sqrt{\mathrm{VIF}}.
+$$
+
+and the JAB scaling factor can be expressed as
+
+$$
+\begin{align}
+S_{\beta_i} & = \frac{1}{\sqrt{2\pi}} \frac{1}{g(\hat\beta)} \frac{1}{\sigma \sqrt{\mathrm{VIF}}} \sqrt{n-1} \\
+ & = \frac{1}{\sqrt{2\pi}} \frac{1}{g(\hat\beta)} \frac{1}{\sqrt{1-R^2_{YX}} \sqrt{\mathrm{VIF}}} \sqrt{n-k-1}.
+\end{align}
+$$
+
+For uncorrelated predictors (e.g., manipulated variables, ANOVA, etc.), the correction term for multicollinearity between preditors can be removed,
+
+$$
+\begin{align}
+S_{\beta_i} & = \frac{1}{\sqrt{2\pi}} \frac{1}{g(\hat\beta)} \frac{1}{\sqrt{1-R^2_{YX}}} \sqrt{n-k-1}.
+\end{align}
+$$
+
+<!--
+Alternatively, the scaling factor $S_\beta$ can also be expressed using the standard error of the regression coefficients as a function of fractions of unexplained variance,
+
+$$
+\mathrm{se}(\hat\beta_i) = \sqrt{\frac{1-R^2_{YX}}{(1-R^2_{X_iX_{\neg i}})(n-k-1)}} \frac{\hat \sigma_y}{\hat \sigma_{X_i}}.
+$$
+
+Assuming that all variables are $z$-standardized, the JAB scaling factor simplifies to
+
+$$
+\begin{align}
+S_{\beta_i} & = \frac{1}{\sqrt{2\pi}} \frac{1}{g(\hat\beta)} \frac{1}{\sqrt{\frac{1-R^2_{YX}}{(1-R^2_{X_iX_{\neg i}}) (n-k-1)}}}  \\
+ & = \frac{1}{\sqrt{2\pi}} \frac{1}{g(\hat\beta)} \sqrt{\frac{1-R^2_{X_iX_{\neg i}}}{1-R^2_{YX}}} \sqrt{n-k-1},
+\end{align}
+$$
+
+This shows that JAB increases as a function of sample size and the ratio of variance that is unique to the predictor $X_i$ relative to the variance unexplained by all predictors.
+-->
+
+To further explore the aggreement between JZS-BF and JAB, I performed a sequential analysis of the data to compare the trajectory of naive posterior probabilities for each regression coefficient.
+As @fig-lm-bf shows, the Bayes factors are in close agreement.
+
+```{r}
+#| label: setup
+library("jab")
+library("BayesFactor")
+library("lmtest")
+
+library("tibble")
+library("dplyr")
+library("tidyr")
+library("broom")
+
+library("ggplot2")
+library("papaja")
+```
+
+
+For illustration purposes, let's analyze the `attitude` data set ($n = 30$ with 6 predictors).
+First, we will compare Jeffrey's approximate Bayes factors (JAB, Wagenmakers, 2022) with the commonly used default JZS-Bayes factor (Rouder & Morey, 2011).
+
+Because the JZS-Bayes factor places prior distributions on the standardized regression coefficients, we first need to $z$-standardize the data.
+
+```{r}
+#| label: prepare-attitude-data
+
+data(attitude)
+attitude_z <- data.frame(scale(attitude))
+attitude_lm <- lm(scale(rating) ~ ., data = attitude_z)
+
+(attitude_lm_tidy <- tidy(attitude_lm))
+```
+
+```{r}
+#| label: attitude-bf-comparison
+
+options(jab.use.p = FALSE)
+
+attitude_jab_t <- jab(
+  attitude_lm
+  , prior = dcauchy
+  , location = 0
+  , scale = sqrt(2) / 4
+)
+
+options(jab.use.p = TRUE)
+
+attitude_jab_p <- jab(
+  attitude_lm
+  , prior = dcauchy
+  , location = 0
+  , scale = sqrt(2) / 4
+)
+
+attitude_jzs <- BayesFactor::regressionBF(
+  rating ~ .
+  , data = attitude_z
+  , rscaleCont = sqrt(2) / 4
+  , whichModels = "top"
+  , progress = FALSE
+)
+
+tibble(
+  term = attitude_lm_tidy$term[-1]
+  # Frequentist p-values
+  , p = attitude_lm_tidy$p.value[-1]
+  
+  # Bayes factors in favor of the null hypothesis
+  , jab_t = attitude_jab_t[-1]
+  , jab_p = attitude_jab_p[-1]
+  , jzs = rev(as.vector(attitude_jzs))
+  
+  # Naive posterior probabilities
+  , jab_t_pp = jab_t / (jab_t + 1)
+  , jab_p_pp = jab_p / (jab_p + 1)
+  , jzs_pp = jzs / (jzs + 1)
+)
+```
+
+And here's the sequential analysis.
+
+```{r}
+#| label: digression-attitude-regression-seq
+
+sequential_jab <- expand.grid(
+  coef = names(coef(attitude_lm))
+  , n = 10:nrow(attitude)
+) |>
+  # Calculate Bayes factors for each subsample
+  dplyr::group_by(n) |>
+  dplyr::mutate(
+    jab = jab(
+      update(attitude_lm, data = attitude_z[1:unique(n), ])
+      , prior = dcauchy
+      , location = 0
+      , scale = sqrt(2) / 4
+    )
+    , jzs = BayesFactor::regressionBF(
+        rating ~ .
+      , data = attitude_z[1:unique(n), ]
+      , rscaleCont = sqrt(2) / 4
+      , whichModels = "top"
+      , progress = FALSE
+    ) |>
+      BayesFactor::extractBF() |>
+      (\(x) c(NA, rev(x[, "bf"])))()
+      , jab_pp = jab / (jab + 1)
+      , jzs_pp = jzs / (jzs + 1)
+  )
+```
+
+```{r}
+#| label: fig-digression-attitude-regression-seq
+#| fig-cap: Comparison of Jeffrey-Zellner-Siow (JZS) Bayes factor and Jeffrey's approximate (JAB) Bayes factor (BF) for the attitude data set.
+#| fig-subcap:
+#|   - "Log Bayes factors"
+#|   - "Naive posterior probabilities"
+#| fig-height: 4
+#| fig-width: 6
+#| layout: [[50], [50]]
+#| echo: false
+
+tidyr::pivot_longer(
+  sequential_jab
+  , c(jab, jzs)
+  , names_to = "method"
+  , values_to = "bf"
+) |>
+  ggplot() +
+    aes(x = n, y = log(1/bf), color = coef, linetype = method) +
+    geom_line(linewidth = 1.25) +
+    scale_color_viridis_d() +
+    scale_linetype_manual(values = c("solid", "22")) +
+    labs(
+      x = bquote(italic(n))
+      , y = bquote(log("BF"))
+      , color = "Coefficient"
+      , linetype = "Method"
+    ) +
+    papaja::theme_apa(box = TRUE)
+
+tidyr::pivot_longer(
+  sequential_jab
+  , c(jab_pp, jzs_pp)
+  , names_to = "method"
+  , values_to = "pp"
+) |>
+  ggplot() +
+    aes(x = n, y = pp, color = coef, linetype = method) +
+    geom_line(linewidth = 1.25) +
+    scale_color_viridis_d() +
+    lims(y = c(0, 1)) +
+    scale_linetype_manual(values = c("solid", "22")) +
+      labs(
+        x = bquote(italic(n))
+        , y = "Naive posterior probability"
+        , color = "Coefficient"
+        , linetype = "Method"
+      ) +
+    papaja::theme_apa(box = TRUE)
+```
+
+
+### Comparison to BIC
+
+The BIC approximation to the Bayes factor should be similar to using a unit information prior for JAB.
+Here, I try different variants of what I thought the unit informatio prior should be,
+
+1. a normal distribution centered on the maximum likelihood estimate with variance equal to the inverse of the Fisher information matrix, combined with the estimated standard errors of each coefficient;
+2. a normal distribution centered on the maximum likelihood estimate with variance $\sigma = 1$. I combined this prior with the assumed standard error for uncorrelated predictors, i.e. $\sigma = 1\sqrt{n}$.
+
+The latter prior amounts to using a standard normal prior distribution centered on $\mu = 0$ and $\sigma = 1$.
+Using the density at $x = 0$, the scaling factor simplifies to $S_\beta = \sqrt{n}$.
+
+I combine these with different test statistics, i.e. the $t$-statistic and the $\chi^2$ likelihood ratio statistic.
+
+```{r}
+#| label: digression-attitude-regression-bic
+
+bic <- drop1(
+  attitude_lm
+  , scope = colnames(attitude)[-1]
+  , k = log(nobs(attitude_lm))
+) |>
+  mutate(
+    d_AIC = AIC - AIC[1]
+    , bic = exp(-0.5*(d_AIC))
+  )
+
+attitude_lm_lrt <- lapply(
+  names(coef(attitude_lm))[-1]
+  , \(x) {
+    as.data.frame(lmtest::lrtest(attitude_lm, x))[2, ]
+  }
+) |>
+  do.call("rbind", args = _) |>
+  dplyr::mutate(term = names(coef(attitude_lm))[-1]) |>
+  select(term, everything())
+
+X <- model.matrix(attitude_lm)
+# sqrt(diag(solve(t(X) %*% X)) * sigma(attitude_lm)^2)
+# sigma <- sqrt(nobs(attitude_lm) * diag(solve(t(X) %*% X))) * sigma(attitude_lm)
+sigma <- broom::tidy(attitude_lm)$std.error*sqrt(nobs(attitude_lm))
+
+tibble::tibble(
+  # Bayes factors in favor of the null hypothesis
+  bic[-1, ]
+  , jab_t = jab(
+    attitude_lm
+    , prior = dnorm
+    , mean = coef(attitude_lm)
+    , sd = sigma
+  )[-1]
+  , jab_lrt_sqrtn = jab:::.jab01(
+    w = attitude_lm_lrt$Chisq
+    , g = dnorm(coef(attitude_lm)[-1], mean = coef(attitude_lm)[-1], sd = 1)
+    , se = 1/sqrt(nobs(attitude_lm))
+  )
+  , jab_t_sqrtn = jab:::.jab01(
+    z = tidy(attitude_lm)$statistic[-1]
+    , g = dnorm(coef(attitude_lm)[-1], mean = coef(attitude_lm)[-1], sd = 1)
+    , se = 1/sqrt(nobs(attitude_lm))
+  )
+  # Naive posterior probabilities
+  , jab_pp = jab_t / (jab_t + 1)
+  , jab_lrt_pp = jab_lrt_sqrtn / (jab_lrt_sqrtn + 1)
+  , bic_pp = bic / (bic + 1)
+) |>
+  dplyr::select(bic:bic_pp)
+```
+
+As is evident from the above equivalence between the LRT-based JAB and the BIC approximation (also see Eq. 7 in Wagenmakers, 2021), the BIC approximation to the Bayes factor is equivalent to JAB with $S_\beta = \sqrt{n}$, which means that the BIC approximation can be readily modified to use arbitrary priors.
+Simply devide by $\sqrt{n}$ and multiply by the desired JAB scaling factor.
+
+```{r}
+dplyr::mutate(
+  bic[-1, ]
+  , bic_exp = bic / sqrt(nobs(attitude_lm))
+  , bic_jzs = bic_exp / sqrt(2*pi) / broom::tidy(attitude_lm)$std.error[-1] / dcauchy(broom::tidy(attitude_lm)$estimate[-1], 0, sqrt(2) / 4)
+) |>
+  dplyr::select(bic:bic_jzs)
+```
+
+
+#### The effect of correlated predictors on the BIC approximation
+
+The following simulations show that the LRT-JAB with unit information prior is equivalent to the BIC approximation.
+However, if the JAB is calculated from the $t$ statistic rather than the $\chi^2$ statistic from a Likelihood Ratio Test, there are some deviations when an effect is present.
+For small samples the JAB is slightly larger than the BIC approximation, and for large samples the difference becomes smaller and eventually reverses, such that the JAB becomes smaller than the BIC approximation.
+Interestingly, the sample size dependent differenves can be avoided when a $\chi^2$ statistic is approximated by transforming the $t$-test's $p$ value via the quantile function of the $\chi^2$ distribution.
+In this case, the $t$-based JAB is slightly larger than the BIC approximation for all sample sizes and this difference is constant across sample sizes.
+
+```{r}
+#| label: digression-bic-simulation
+#| cache: true
+
+sim_approx_bf <- function(n, mu, rho12, rho13, rho23, use.p) {
+  M <- rep(mu, 3)
+  S <- diag(3)
+  S[lower.tri(S)] <- c(rho12, rho13, rho23)
+  S[upper.tri(S)] <- S[lower.tri(S)]
+
+  y <- MASS::mvrnorm(n = n, mu = M, Sigma = S, empirical = TRUE)
+  y <- data.frame(y)
+
+  lm_i <- lm(X1 ~ X2 + X3, data = y)
+  vif_i <- car::vif(lm_i)
+
+  bic <- drop1(
+    lm_i
+    , scope = "X2"
+    , k = log(n)
+  )$AIC
+
+  x_tidy <- summary(lm_i) |>
+    broom::tidy()
+
+  lm_i_chisq <- -2 * (
+    logLik(update(lm_i, . ~ . - X2)) -
+    logLik(lm_i)
+  )
+
+  options(jab.use.p = use.p)
+
+  data.frame(
+    p_lrt = 1 - pchisq(lm_i_chisq, df = 1)
+    , p_t = x_tidy$p.value[2]
+    , jab_t = jab::jab(
+      lm_i
+      , dnorm
+      , mean = x_tidy$estimate
+      , sd = x_tidy$std.error * sqrt(n)
+    )[2]
+    # , jab_t2 = jab::jab( # Makes deviation from BIC worse
+    #   lm_i
+    #   , dnorm
+    #   , mean = x_tidy$estimate
+    #   , sd = x_tidy$std.error * sqrt(n - 1)
+    # )[2]
+    # , jab_t2 = jab::jab( # Makes deviation from BIC worse
+    #   lm_i
+    #   , dnorm
+    #   , mean = x_tidy$estimate
+    #   , sd = x_tidy$std.error * sqrt(n) / sqrt(vif_i)
+    # )[2]
+    # , jab_t2 = jab::jab( # Makes deviation from BIC worse
+    #   lm_i
+    #   , dnorm
+    #   , mean = 0
+    #   , sd = x_tidy$std.error * sqrt(n - 1)
+    # )[1]
+    # , jab_t2 = jab:::.jab01( # identical to t
+    #   z = x_tidy$statistic[1]
+    #   , g = dnorm(0)
+    #   , se = 1/sqrt(n-1)
+    # )
+    # , jab_t2 = jab:::.jab01(
+    #   z = x_tidy$statistic[1]
+    #   , g = dnorm(0)
+    #   , se = 1/sqrt(n-1)
+    # )
+    # , jab_t3 = jab:::.jab01(
+    #   p = x_tidy$p.value[1]
+    #   , g = dnorm(0)
+    #   , se = 1/sqrt(n-1)
+    # )
+    , jab_lrt = jab:::.jab01(
+      w = lm_i_chisq
+      , g = dnorm(0)
+      , se = 1 / sqrt(n)
+    )
+    # , jab_lrt2 = jab:::.jab01( # identical to lrt
+    #   w = lm_i_chisq
+    #   , g = dnorm(x_tidy$estimate, x_tidy$estimate, sd = x_tidy$std.error*sqrt(n))
+    #   , se = x_tidy$std.error
+    # )
+    , bic = exp(-0.5 * diff(bic))
+  )
+}
+
+library("multidplyr")
+local_cl <- new_cluster(3)
+cluster_copy(local_cl, "sim_approx_bf")
+
+bic_jab_simulation <- expand.grid(
+  n = unique(round(exp(seq(2, 9.22, by = 0.01))))
+  , mu = 0
+  , rho12 = c(0, 0.1)
+  , rho13 = c(0, 0.1)
+  , rho23 = c(0, 0.5)
+  , use.p = c(TRUE, FALSE)
+) |>
+  # Calculate Bayes factors for each subsample
+  dplyr::group_by(n, mu, rho12, rho13, rho23, use.p) |>
+  multidplyr::partition(local_cl) |>
+  dplyr::do({
+    sim_approx_bf(.$n, .$mu, .$rho12, .$rho13, .$rho23, .$use.p)
+  }) |>
+  dplyr::collect()
+```
+
+```{r}
+#| label: fig-digression-bic-simulation-p
+#| fig-cap: "$p$-values for the $t$-test and likelihood ratio test for different sample sizes and correlation structures."
+
+dplyr::filter(bic_jab_simulation, n <= 5000 & !use.p) |>
+  tidyr::pivot_longer(
+    cols = c(p_lrt, p_t)
+    , names_to = "test"
+    , values_to = "p"
+  ) |>
+  ggplot() +
+    aes(x = n, y = log(p), color = test) +
+    geom_line(linewidth = 1) +
+    geom_hline(yintercept = 0) +
+    scale_color_viridis_d(option = "B", end = 0.8) +
+    facet_wrap(~ rho12 + rho13 + rho23, ncol = 4, labeller = label_both, scales = "free_y") +
+    labs(
+      x = bquote(italic(n))
+      , y = bquote("log(p)")
+      , color = "Use p-value"
+    ) +
+    papaja::theme_apa(box = TRUE)
+```
+
+```{r}
+#| label: fig-digression-bic-simulation-p2
+#| fig-cap: "Difference in $p$-values for the $t$-test and likelihood ratio test for different sample sizes and correlation structures."
+
+dplyr::filter(bic_jab_simulation, n <= 5000 & !use.p) |>
+  ggplot() +
+    aes(x = n, y = log(p_t) - log(p_lrt)) +
+    geom_line(linewidth = 1) +
+    geom_hline(yintercept = 0) +
+    scale_color_viridis_d(option = "B", end = 0.8) +
+    facet_wrap(~ rho12 + rho13 + rho23, ncol = 4, labeller = label_both, scales = "free_y") +
+    labs(
+      x = bquote(italic(n))
+      , y = bquote(Delta~"log(p)")
+      , color = "Use p-value"
+    ) +
+    papaja::theme_apa(box = TRUE)
+```
+
+```{r}
+#| label: fig-digression-bic-simulation-bf
+#| fig-cap: "log Bayes factors based on BIC and JAB for different sample sizes and correlation structures."
+#| fig-height: 7
+#| fig-width: 9
+#| echo: false
+
+# Plot results
+bic_jab_simulation |>
+  tidyr::pivot_longer(
+    cols = c("jab_t", "jab_lrt", "bic")
+    , names_to = "method"
+    , values_to = "bf"
+  ) |>
+  ggplot() +
+    aes(x = n, y = log(bf), color = method, linetype = use.p) +
+    geom_line(linewidth = 1) +
+    scale_color_viridis_d() +
+    facet_wrap(~ rho12 + rho13 + rho23, ncol = 4, labeller = label_both, scales = "free_y") +
+    labs(
+      x = bquote(italic(n))
+      , y = "log(BF)"
+      , color = "Method"
+      , linetype = "Use p-value"
+    ) +
+    papaja::theme_apa(box = TRUE)
+```
+
+```{r}
+#| label: fig-digression-bic-simulation-bf-diff
+#| fig-cap: "Difference in log Bayes factors based on BIC and JAB for different sample sizes and correlation structures."
+#| fig-height: 7
+#| fig-width: 9
+dplyr::filter(bic_jab_simulation, n <= 5000 & !use.p) |>
+  ggplot() +
+    aes(x = n, y = log(jab_lrt) - log(bic)) +
+    geom_line(linewidth = 1) +
+    geom_hline(yintercept = 0) +
+    scale_color_viridis_d(option = "B", end = 0.8) +
+    facet_wrap(~ rho12 + rho13 + rho23, ncol = 4, labeller = label_both, scales = "free_y") +
+    labs(
+      x = bquote(italic(n))
+      , y = bquote(Delta~"log(BF)")
+      , color = "Use p-value"
+    ) +
+    papaja::theme_apa(box = TRUE)
+
+dplyr::filter(bic_jab_simulation, n <= 5000) |>
+  dplyr::mutate(use.p = if_else(use.p, "p", "t")) |>
+  ggplot() +
+    aes(x = n, y = log(jab_t) - log(bic), color = use.p) +
+    geom_line(linewidth = 1) +
+    geom_hline(yintercept = 0) +
+    scale_color_viridis_d(option = "B", end = 0.8) +
+    facet_wrap(~ rho12 + rho13 + rho23, ncol = 4, labeller = label_both) +
+    labs(
+      x = bquote(italic(n))
+      , y = bquote(Delta~"log(BF)")
+      , color = "Method"
+    ) +
+    papaja::theme_apa(box = TRUE)
+
+# dplyr::filter(bic_jab_simulation, n <= 5000) |>
+#   ggplot() +
+#     aes(x = n, y = log(jab_t2) - log(bic), color = use.p) +
+#     geom_line(linewidth = 1) +
+#     geom_hline(yintercept = 0) +
+#     scale_color_viridis_d(option = "B", end = 0.8) +
+#     facet_wrap(~ rho12 + rho13 + rho23, ncol = 4, labeller = label_both, scales = "free_y") +
+#     labs(
+#       x = bquote(italic(n))
+#       , y = bquote(Delta~"log(BF)")
+#       , color = "Use p-value"
+#     ) +
+#     papaja::theme_apa(box = TRUE)
+
+# dplyr::filter(bic_jab_simulation, n <= 5000 & !use.p) |>
+#   ggplot() +
+#     aes(x = n, y = log(jab_t3) - log(bic)) +
+#     geom_line(linewidth = 1) +
+#     geom_hline(yintercept = 0) +
+#     scale_color_viridis_d(option = "B", end = 0.8) +
+#     facet_wrap(~ rho12 + rho13 + rho23, ncol = 4, labeller = label_both, scales = "free_y") +
+#     labs(
+#       x = bquote(italic(n))
+#       , y = bquote(Delta~"log(BF)")
+#       , color = "Use p-value"
+#     ) +
+#     papaja::theme_apa(box = TRUE)
+
+# dplyr::filter(bic_jab_simulation, n <= 5000) |>
+#   dplyr::distinct() |>
+#   ggplot() +
+#     aes(x = n, y = log(jab_t) - log(jab_t2), color = use.p) +
+#     geom_line(linewidth = 1) +
+#     geom_hline(yintercept = 0) +
+#     scale_color_viridis_d(option = "B", end = 0.8) +
+#     facet_wrap(~ rho12 + rho13 + rho23, ncol = 4, labeller = label_both, scales = "free_y") +
+#     labs(
+#       x = bquote(italic(n))
+#       , y = bquote(Delta~"log(BF)")
+#       , color = "Use p-value"
+#     ) +
+#     papaja::theme_apa(box = TRUE)
+```
+
+The following plot again illustrates the difference in behavior of t- and p-based JAB as sample size/BF grows.
+
+```{r}
+dplyr::filter(bic_jab_simulation, n <= 5000) |>
+  dplyr::select(n, mu, rho12, rho13, rho23, use.p, jab_t) |>
+  dplyr::mutate(use.p = if_else(use.p, "p", "t")) |>
+  tidyr::pivot_wider(names_from = "use.p", values_from = "jab_t") |>
+  ggplot() +
+    aes(x = n, y = log(p) - log(t)) +
+    geom_line(linewidth = 1) +
+    facet_wrap(~ rho12 + rho13 + rho23, ncol = 4, labeller = label_both, scales = "free_y") +
+    labs(
+      x = bquote(italic(n))
+      , y = bquote(Delta*log("BF"))
+    ) +
+    papaja::theme_apa(box = TRUE)
+```
