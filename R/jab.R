@@ -9,9 +9,20 @@
 #' @param ... Additional arguements to pass to `prior`.
 #' @param curvature Function. Function to compute curvature at MLE. Must accept
 #'   the same arguments as `prior` as the ellipsis is passed to both functions.
+#'   If `NULL` no prior curvature correction is applied.
 #' @param ratio Character. Either `"01"` or `"10"` to define the
 #'    direction of the evidence ratio.
 #'
+#' @details Jeffrey's approximate Bayes factors assumes, among other things,
+#'   that the standard error is small or that the prior distribution at the
+#'   maximum likelihood estimate (MLE) is only mildly curved. This assumption
+#'   is tenable in large samples or with relatively flat priors. Outside of
+#'   these conditions, an additional curvature correction can be applied by
+#'   passing a function to the `curvature` argument. This function must accept
+#'   the same arguments as `prior` and return a numeric value. If no analytic
+#'   curvature function is available, the curvature can be estimated in a
+#'   custom function that uses, for example, `Rdistance::secondDerivative`.
+#' 
 #' @return A numeric (vector of) Jeffrey's approximate Bayes factors.
 #' @export
 #'

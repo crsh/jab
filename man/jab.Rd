@@ -38,7 +38,8 @@ jab(x, ...)
 \item{prior}{Function. Function to compute prior density at MLE.}
 
 \item{curvature}{Function. Function to compute curvature at MLE. Must accept
-the same arguments as \code{prior} as the ellipsis is passed to both functions.}
+the same arguments as \code{prior} as the ellipsis is passed to both functions.
+If \code{NULL} no prior curvature correction is applied.}
 
 \item{ratio}{Character. Either \code{"01"} or \code{"10"} to define the
 direction of the evidence ratio.}
@@ -51,6 +52,17 @@ A numeric (vector of) Jeffrey's approximate Bayes factors.
 \description{
 Generic function to compute Jeffrey's approximate Bayes factors for
 results from frequentist Wald tests.
+}
+\details{
+Jeffrey's approximate Bayes factors assumes, among other things,
+that the standard error is small or that the prior distribution at the
+maximum likelihood estimate (MLE) is only mildly curved. This assumption
+is tenable in large samples or with relatively flat priors. Outside of
+these conditions, an additional curvature correction can be applied by
+passing a function to the \code{curvature} argument. This function must accept
+the same arguments as \code{prior} and return a numeric value. If no analytic
+curvature function is available, the curvature can be estimated in a
+custom function that uses, for example, \code{Rdistance::secondDerivative}.
 }
 \examples{
 ctl <- c(4.17,5.58,5.18,6.11,4.50,4.61,5.17,4.53,5.33,5.14)
