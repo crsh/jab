@@ -100,16 +100,24 @@ curvature_g <- function(mle, prior, se = NULL, curvature = NULL, ...) {
   assertthat::assert_that(is.function(prior))
   
   if(!is.null(curvature)) {
-    assertthat::assert_that(is.function(curvature))
+    assertthat::assert_that(is.function(curvature) || is.character(curvature))
     assertthat::assert_that(is.numeric(se))
   }
 
   g <- prior(x = mle, ...)
 
   if(!is.null(curvature)) {
-    g <- g + se^2/2 * curvature(x = mle, ...)
+    if(is.character(curvature) && curvature == "approx" && "Rdistance" %in% rownames(installed.packages())) {
+      curvature <- function(x, ...) {
+        Rdistance::secondDeriv(x = x, FUN = prior, ...) |>
+          as.numeric()
+      }
+    }
+  } else {
+    curvature <- \(x, ...) 0
   }
 
+  if(!is.null(se)) g <- g + se^2/2 * curvature(x = mle, ...)
   g
 }
 

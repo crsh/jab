@@ -15,6 +15,7 @@ Imports:
     stats (>= 4.3.0),
     methods (>= 4.3.0)
 Suggests: 
+    Rdistance (>= 4.0.5),
     BayesFactor (>= 0.9.12.4.4),
     broom.mixed (>= 0.2.9.4),
     testthat (>= 3.0.0),
