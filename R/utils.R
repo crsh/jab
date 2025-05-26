@@ -108,9 +108,28 @@ curvature_g <- function(mle, prior, se = NULL, curvature = NULL, ...) {
 
   if(!is.null(curvature)) {
     if(is.character(curvature) && curvature == "approx" && "Rdistance" %in% rownames(installed.packages())) {
+      
       curvature <- function(x, ...) {
-        Rdistance::secondDeriv(x = x, FUN = prior, ...) |>
-          as.numeric()
+        dots <- list(...)
+
+        # Recycle arguments
+        dots <- c(x = list(x), dots) |>
+          data.frame()
+        
+        result <- numeric(nrow(dots))
+        
+        # Compute second derivative for each element
+        for(i in nrow(dots)) {
+          args <- dots[i, , drop = FALSE]
+          
+          # Compute second derivative for this combination
+          result[i] <- do.call(function(x, ...) {
+            Rdistance::secondDeriv(x = x, FUN = prior, ...)
+          }, args) |>
+            as.numeric()
+        }
+        
+        return(result)
       }
     }
   } else {
