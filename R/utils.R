@@ -42,8 +42,9 @@
   )
 }
 
-.tidy_jab <- function(x, method, prior, ..., names = NULL, ratio = getOption("jab.ratio")) {
+.tidy_jab <- function(x, method, prior, ..., curvature = NULL, names = NULL, ratio = getOption("jab.ratio")) {
   assertthat::assert_that(is.function(prior))
+  if(!is.null(curvature)) assertthat::assert_that(is.function(curvature))
 
   x_tidy <- broom::tidy(x)
 
@@ -60,29 +61,31 @@
     method <- "adj.p"
   }
 
-  jab01 <- switch(
+  g <- curvature_g(
+    , mle = x_tidy$estimate
+    , prior = prior
+    , se = x_tidy$std.error
+    , curvature = curvature
+    , ...
+  )
+
+  jab_args <- list(
+    g = g
+    , se = x_tidy$std.error
+  )
+
+  jab_method_arg <- switch(
     method
-    , "w" = .jab01(
-      w = x_tidy$statistic
-      , g = prior(x_tidy$estimate, ...)
-      , se = x_tidy$std.error
-    )
-    , "z" = .jab01(
-      z = x_tidy$statistic
-      , g = prior(x_tidy$estimate, ...)
-      , se = x_tidy$std.error
-    )
-    , "p" = .jab01(
-      p = x_tidy$p.value
-      , g = prior(x_tidy$estimate, ...)
-      , se = x_tidy$std.error
-    )
-    , "adj.p" = .jab01(
-      p = x_tidy$adj.p.value
-      , g = prior(x_tidy$estimate, ...)
-      , se = x_tidy$std.error
-    )
+    , "w"     = list(w = x_tidy$statistic)
+    , "z"     = list(z = x_tidy$statistic)
+    , "p"     = list(p = x_tidy$p.value)
+    , "adj.p" = list(p = x_tidy$adj.p.value)
     , stop("`method` must be either 'w', 'z', or 'p'.")
+  )
+
+  jab01 <- do.call(
+    what = .jab01_w_a_n
+    , args = c(jab_method_arg, jab_args)
   )
 
   if (!is.null(names)) {
@@ -90,6 +93,24 @@
   }
 
   .ratio(jab01, ratio)
+}
+
+curvature_g <- function(mle, prior, se = NULL, curvature = NULL, ...) {
+  assertthat::assert_that(is.numeric(mle))
+  assertthat::assert_that(is.function(prior))
+  
+  if(!is.null(curvature)) {
+    assertthat::assert_that(is.function(curvature))
+    assertthat::assert_that(is.numeric(se))
+  }
+
+  g <- prior(x = mle, ...)
+
+  if(!is.null(curvature)) {
+    g <- g + se^2/2 * curvature(x = mle, ...)
+  }
+
+  g
 }
 
 require_broom_mixed <- function() {

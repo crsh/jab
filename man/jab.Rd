@@ -14,21 +14,21 @@
 \usage{
 jab(x, ...)
 
-\method{jab}{default}(x, prior, ..., ratio = getOption("jab.ratio"))
+\method{jab}{default}(x, prior, ..., curvature = NULL, ratio = getOption("jab.ratio"))
 
-\method{jab}{htest}(x, prior, ..., ratio = getOption("jab.ratio"))
+\method{jab}{htest}(x, prior, ..., curvature = NULL, ratio = getOption("jab.ratio"))
 
-\method{jab}{lm}(x, prior, ..., ratio = getOption("jab.ratio"))
+\method{jab}{lm}(x, prior, ..., curvature = NULL, ratio = getOption("jab.ratio"))
 
-\method{jab}{glht}(x, prior, ..., ratio = getOption("jab.ratio"))
+\method{jab}{glht}(x, prior, ..., curvature = NULL, ratio = getOption("jab.ratio"))
 
-\method{jab}{cocor.dep.groups.overlap}(x, test, prior, ..., ratio = getOption("jab.ratio"))
+\method{jab}{cocor.dep.groups.overlap}(x, test, prior, ..., curvature = NULL, ratio = getOption("jab.ratio"))
 
-\method{jab}{merMod}(x, prior, ..., ratio = getOption("jab.ratio"))
+\method{jab}{merMod}(x, prior, ..., curvature = NULL, ratio = getOption("jab.ratio"))
 
-\method{jab}{glmerMod}(x, prior, ..., ratio = getOption("jab.ratio"))
+\method{jab}{glmerMod}(x, prior, ..., curvature = NULL, ratio = getOption("jab.ratio"))
 
-\method{jab}{emmGrid}(x, prior, ..., ratio = getOption("jab.ratio"))
+\method{jab}{emmGrid}(x, prior, ..., curvature = NULL, ratio = getOption("jab.ratio"))
 }
 \arguments{
 \item{x}{Frequentist analysis output}
@@ -36,6 +36,9 @@ jab(x, ...)
 \item{...}{Additional arguements to pass to \code{prior}.}
 
 \item{prior}{Function. Function to compute prior density at MLE.}
+
+\item{curvature}{Function. Function to compute curvature at MLE. Must accept
+the same arguments as \code{prior} as the ellipsis is passed to both functions.}
 
 \item{ratio}{Character. Either \code{"01"} or \code{"10"} to define the
 direction of the evidence ratio.}

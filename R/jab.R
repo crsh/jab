@@ -7,6 +7,8 @@
 #' @param prior Function. Function to compute prior density at MLE.
 #' @param test Character. Wald statistics to use for calculations.
 #' @param ... Additional arguements to pass to `prior`.
+#' @param curvature Function. Function to compute curvature at MLE. Must accept
+#'   the same arguments as `prior` as the ellipsis is passed to both functions.
 #' @param ratio Character. Either `"01"` or `"10"` to define the
 #'    direction of the evidence ratio.
 #'
@@ -28,7 +30,7 @@ jab <- function(x, ...) UseMethod("jab", x)
 #' @method jab default
 #' @export
 
-jab.default <- function(x, prior, ..., ratio = getOption("jab.ratio")) {
+jab.default <- function(x, prior, ..., curvature = NULL, ratio = getOption("jab.ratio")) {
   x_class <- class(x)
 
   message("No method defined for objects of class `", x_class, "`. Attempting
@@ -41,6 +43,7 @@ jab.default <- function(x, prior, ..., ratio = getOption("jab.ratio")) {
     , method = if (getOption("jab.use.p")) "p" else "w"
     , prior = prior
     , ...
+    , curvature = curvature
     , names = "term"
     , ratio = ratio
   )
@@ -50,12 +53,13 @@ jab.default <- function(x, prior, ..., ratio = getOption("jab.ratio")) {
 #' @method jab htest
 #' @export
 
-jab.htest <- function(x, prior, ..., ratio = getOption("jab.ratio")) {
+jab.htest <- function(x, prior, ..., curvature = NULL, ratio = getOption("jab.ratio")) {
   .tidy_jab(
     x
     , method = if (getOption("jab.use.p")) "p" else "z"
     , prior = prior
     , ...
+    , curvature = curvature
     , names = "term"
     , ratio = ratio
   )
@@ -66,12 +70,13 @@ jab.htest <- function(x, prior, ..., ratio = getOption("jab.ratio")) {
 #' @method jab lm
 #' @export
 
-jab.lm <- function(x, prior, ..., ratio = getOption("jab.ratio")) {
+jab.lm <- function(x, prior, ..., curvature = NULL, ratio = getOption("jab.ratio")) {
   .tidy_jab(
     x
     , method = if (getOption("jab.use.p")) "p" else "z"
     , prior = prior
     , ...
+    , curvature = curvature
     , names = "term"
     , ratio = ratio
   )
@@ -82,12 +87,13 @@ jab.lm <- function(x, prior, ..., ratio = getOption("jab.ratio")) {
 #' @method jab glht
 #' @export
 
-jab.glht <- function(x, prior, ..., ratio = getOption("jab.ratio")) {
+jab.glht <- function(x, prior, ..., curvature = NULL, ratio = getOption("jab.ratio")) {
   .tidy_jab(
     x
     , method = if (getOption("jab.use.p")) "p" else "z"
     , prior = prior
     , ...
+    , curvature = curvature
     , names = "contrast"
     , ratio = ratio
   )
@@ -103,6 +109,7 @@ jab.cocor.dep.groups.overlap <- function(
   , test
   , prior
   , ...
+  , curvature = NULL
   , ratio = getOption("jab.ratio")
 ) {
   assertthat::assert_that(is.function(prior))
@@ -123,16 +130,24 @@ jab.cocor.dep.groups.overlap <- function(
 
   std_error <- estimate / res$statistic
 
+  g <- curvature_g(
+    , mle = estimate
+    , prior = prior
+    , se = std_error
+    , curvature = curvature
+    , ...
+  )
+
   if (getOption("jab.use.p")) {
     jab01 <- .jab01(
       , p = res$p.value
-      , g = prior(estimate, ...)
+      , g = g
       , se = std_error
     )
   } else {
     jab01 <- .jab01(
       , z = res$statistic
-      , g = prior(estimate, ...)
+      , g = g
       , se = std_error
     )
   }
@@ -146,23 +161,31 @@ jab.cocor.dep.groups.overlap <- function(
 #' @method jab merMod
 #' @export
 
-jab.merMod <- function(x, prior, ..., ratio = getOption("jab.ratio")) {
+jab.merMod <- function(x, prior, ..., curvature = NULL, ratio = getOption("jab.ratio")) {
   require_broom_mixed()
   assertthat::assert_that(is.function(prior))
 
   x_tidy <- broom.mixed::tidy(x) |>
     subset(effect == "fixed")
 
+  g <- curvature_g(
+    , mle = x_tidy$estimate
+    , prior = prior
+    , se = x_tidy$std.error
+    , curvature = curvature
+    , ...
+  )
+
   if (getOption("jab.use.p")) {
     jab01 <- .jab01(
       , p = x_tidy$p.value
-      , g = prior(x_tidy$estimate, ...)
+      , g = g
       , se = x_tidy$std.error
     )
   } else {
     jab01 <- .jab01(
       , z = x_tidy$statistic
-      , g = prior(x_tidy$estimate, ...)
+      , g = g
       , se = x_tidy$std.error
     )
   }
@@ -176,20 +199,21 @@ jab.merMod <- function(x, prior, ..., ratio = getOption("jab.ratio")) {
 #' @method jab glmerMod
 #' @export
 
-jab.glmerMod <- function(x, prior, ..., ratio = getOption("jab.ratio")) {
-  jab.merMod(x, prior, ..., ratio = ratio)
+jab.glmerMod <- function(x, prior, ..., curvature = NULL, ratio = getOption("jab.ratio")) {
+  jab.merMod(x, prior, ..., curvature = curvature, ratio = ratio)
 }
 
 #' @rdname jab
 #' @method jab emmGrid
 #' @export
 
-jab.emmGrid <- function(x, prior, ..., ratio = getOption("jab.ratio")) {
+jab.emmGrid <- function(x, prior, ..., curvature = NULL, ratio = getOption("jab.ratio")) {
   .tidy_jab(
     x
     , method = if (getOption("jab.use.p")) "p" else "z"
     , prior = prior
     , ...
+    , curvature = curvature
     , names = NULL
     , ratio = ratio
   )

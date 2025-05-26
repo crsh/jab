@@ -23,6 +23,6 @@ Bayes factor with a defined probability according to the $3p\sqrt{n}-rule
 The function uses different formulas based on the value of \code{x} to calculate the effective sample size.
 }
 \examples{
-ess_3pn(0.05, 0.5)
-ess_3pn(0.3, 0.7)
+ess_3pn(3, 0.5)
+ess_3pn(10, 0.7)
 }
