@@ -137,7 +137,7 @@ curvature_g <- function(mle, prior, se = NULL, curvature = NULL, ...) {
   }
 
   if(!is.null(se)) g <- g + se^2/2 * curvature(x = mle, ...)
-  if(g < 0) g <- 0
+  if(any(g < 0)) g[g < 0] <- 0
   
   g
 }
