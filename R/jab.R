@@ -142,7 +142,7 @@ jab.cocor.dep.groups.overlap <- function(
   std_error <- estimate / res$statistic
 
   g <- curvature_g(
-    , mle = estimate
+    mle = estimate
     , prior = prior
     , se = std_error
     , curvature = curvature
@@ -261,6 +261,10 @@ jab.emmGrid <- function(x, prior, ..., curvature = NULL, ratio = getOption("jab.
 #'
 #' @examples
 #' jab_3pn(x = 0.0495, n = 136)
+#' 
+#' # Small sample correction (Aust, Pawel, & Wagenmaker, 2025)
+#' jab_3pn(x = 0.0495, n = 12)
+#' jab_3pn(x = 0.0495, n = 12 + 1)
 
 jab_3pn <- function(x, n, ratio = getOption("jab.ratio")) {
   assertthat::assert_that(is.numeric(x))
